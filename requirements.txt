@@ -3,3 +3,4 @@ flask-cors
 deepface
 tensorflow
 tf_keras
+scikit-learn
