@@ -10,3 +10,4 @@ Pillow==9.5.0
 Werkzeug==2.3.6
 itsdangerous==2.1.2
 face-recognition-models==0.3.0
+cmake==3.22.1
