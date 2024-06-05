@@ -2,24 +2,20 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from deepface import DeepFace
 import os
+import pickle
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Load known faces
-def load_known_faces(known_faces_dir):
-    known_faces = []
-    known_names = []
-    for name in os.listdir(known_faces_dir):
-        person_dir = os.path.join(known_faces_dir, name)
-        if os.path.isdir(person_dir):
-            for filename in os.listdir(person_dir):
-                image_path = os.path.join(person_dir, filename)
-                known_faces.append(image_path)
-                known_names.append(name)
-    return known_faces, known_names
+MODEL_PATH = 'face_recognition_model.pkl'
 
-known_faces, known_names = load_known_faces('known_faces')
+# Load the trained model
+def load_model(model_path):
+    with open(model_path, 'rb') as f:
+        return pickle.load(f)
+
+# Load the model when the application starts
+representations = load_model(MODEL_PATH)
 
 @app.route('/')
 def index():
@@ -35,13 +31,20 @@ def recognize_face():
         # Get the image file from the request
         image_file = request.files['file']
 
-        # Perform face recognition using deepface
-        results = DeepFace.find(img_path=image_file, db_path='known_faces', enforce_detection=False)
+        # Perform face recognition using the loaded model
+        input_representation = DeepFace.represent(image_file, model_name='Facenet')[0]['embedding']
+        
+        min_distance = float('inf')
+        name = None
+        for rep, rep_name in representations:
+            distance = DeepFace.findCosineDistance(input_representation, rep)
+            if distance < min_distance:
+                min_distance = distance
+                name = rep_name
 
-        if results.empty:
+        if name is None:
             return jsonify({"error": "No matching faces found"}), 403
         else:
-            name = results.iloc[0]['identity'].split('/')[-1]
             return jsonify({"name": name}), 200
 
     except Exception as e:
@@ -70,9 +73,10 @@ def save_photos():
             file_path = os.path.join(person_dir, file.filename)
             file.save(file_path)
 
-        # Reload known faces after saving new photos
-        global known_faces, known_names
-        known_faces, known_names = load_known_faces('known_faces')
+        # Retrain and save the model after saving new photos
+        os.system('python trainer.py')
+        global representations
+        representations = load_model(MODEL_PATH)
 
         return jsonify({"message": "Photos saved successfully"}), 200
 
